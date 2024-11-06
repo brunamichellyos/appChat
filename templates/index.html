@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>App Chat</title>
+    <link rel="stylesheet" href="../static/style.css">
+</head>
+<body>
+    <div id="login">
+        <h2>Digite seu nome para entrar no chat</h2>
+        <input type="text" id="username" placeholder="Nome" />
+        <button onclick="joinChat()">Entrar</button>
+    </div>
+    
+    <div id="chat" style="display: none;">
+        <div id="chatContainer">
+            <div id="userList">
+                <h3>Usuários Online:</h3>
+                <ul id="users"></ul>
+                <!-- Botão "Voltar ao Chat Público" inicialmente oculto -->
+                <button id="publicChatButton" onclick="goToPublicChat()" style="display: none;">Voltar ao Chat Público</button>
+            </div>
+            <div id="messageArea">
+                <h4 id="chatWith">Chat Público</h4>
+                <div id="messages"></div>
+                <div id="inputArea">
+                    <input type="text" id="messageInput" placeholder="Digite uma mensagem..." />
+                    <button id="sendButton" onclick="sendMessage()">Enviar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+    <script>
+        const socket = io();
+        let username = "";
+        let currentChatUser = "";  // Nome do usuário com quem estamos conversando
+        let isPrivateChat = false; // Indica se o chat atual é privado
+
+        function joinChat() {
+            username = document.getElementById("username").value;
+            if (username) {
+                socket.emit("join", { username });
+                document.getElementById("login").style.display = "none";
+                document.getElementById("chat").style.display = "block";
+            }
+        }
+
+        socket.on("message", function(data) {
+        const messages = document.getElementById("messages");
+        const messageElement = document.createElement("p");
+
+            if (data.sender === "Sistema") {
+                // Aplica a classe para mensagens do sistema
+                messageElement.classList.add("system-message");
+                messageElement.textContent = data.message;
+            } else if (data.isPrivate && data.sender !== username) {
+                messageElement.classList.add("private-message");
+                messageElement.textContent = `[Privado] ${data.sender}: ${data.message}`;
+            } else if (data.sender === username) {
+                messageElement.classList.add("own-message");
+                messageElement.textContent = `[Você]: ${data.message}`;
+            } else {
+                messageElement.classList.add("received-message");
+                messageElement.textContent = `${data.sender}: ${data.message}`;
+            }
+
+            messages.appendChild(messageElement);
+            messages.scrollTop = messages.scrollHeight;
+        });
+
+
+        socket.on("user_list", function(users) {
+            const usersList = document.getElementById("users");
+            usersList.innerHTML = "";
+            users.forEach(user => {
+                const userElement = document.createElement("li");
+                userElement.textContent = user;
+                userElement.classList.add("user-item");
+                
+                // Se o usuário está em chat privado, destacá-lo
+                if (user === currentChatUser && isPrivateChat) {
+                    userElement.classList.add("selected-user");
+                }
+                
+                userElement.onclick = () => startPrivateChat(user, userElement);
+                usersList.appendChild(userElement);
+            });
+        });
+
+        function startPrivateChat(user, element) {
+            currentChatUser = user;
+            isPrivateChat = true;
+            document.getElementById("chatWith").textContent = `Chat Direto com ${user}`;
+            
+            // Exibe o botão para voltar ao chat público
+            document.getElementById("publicChatButton").style.display = "block";
+
+            // Remove a classe "selected-user" de qualquer usuário previamente selecionado
+            document.querySelectorAll('.user-item').forEach(item => {
+                item.classList.remove('selected-user');
+            });
+
+            // Adiciona a classe "selected-user" ao usuário atual
+            element.classList.add("selected-user");
+        }
+
+        function sendMessage() {
+            const messageInput = document.getElementById("messageInput");
+            const message = messageInput.value;
+            if (message) {
+                if (isPrivateChat) {
+                    socket.emit("private_message", { message, to: currentChatUser });
+                } else {
+                    socket.emit("message", message);
+                }
+                messageInput.value = "";
+            }
+        }
+
+        function goToPublicChat() {
+            currentChatUser = "";
+            isPrivateChat = false;
+            document.getElementById("chatWith").textContent = "Chat Público";
+
+            // Oculta o botão de voltar ao chat público
+            document.getElementById("publicChatButton").style.display = "none";
+
+            // Remove o destaque de qualquer usuário selecionado
+            document.querySelectorAll('.user-item').forEach(item => {
+                item.classList.remove('selected-user');
+            });
+        }
+
+        // Adiciona um ouvinte para detectar a tecla Enter no campo de mensagem
+        document.getElementById("messageInput").addEventListener("keypress", function(event) {
+            if (event.key === "Enter") {
+                event.preventDefault(); // Evita uma nova linha no campo de entrada
+                sendMessage(); // Envia a mensagem
+            }
+        });
+    </script>
+</body>
+</html>
